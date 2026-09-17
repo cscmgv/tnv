@@ -42,6 +42,30 @@ export type Candidate = {
   created_by: string | null;
   locked_by: string | null;
   locked_at: string | null;
+  deleted_at: string | null;
+  upload_batch_id: string | null;
+  created_at: string;
+};
+
+export type UploadBatch = {
+  id: string;
+  filename: string;
+  total_rows: number;
+  created_rows: number;
+  updated_rows: number;
+  category_id: number | null;
+  uploaded_by: string | null;
+  uploaded_at: string;
+  status: "active" | "revoked";
+  revoked_at: string | null;
+  candidate_ids: number[];
+};
+
+export type ActivityLog = {
+  id: number;
+  action: string;
+  details: string;
+  performed_by: string | null;
   created_at: string;
 };
 

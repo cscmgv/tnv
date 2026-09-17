@@ -49,11 +49,219 @@ async function generateAndSendSetupLink(email: string, regNo: string) {
 
 export async function deleteCandidate(assessmentId: number | null, candidateId: number) {
   return safeAction(async () => {
-    await requireProfile("admin");
-    const supabase = await createClient();
-    if (assessmentId) await supabase.from("assessments").delete().eq("id", assessmentId);
-    await supabase.from("candidates").delete().eq("id", candidateId);
+    const { supabase, profile } = await requireProfile("admin");
+    const now = new Date().toISOString();
+    // Soft delete candidate
+    const { error } = await supabase.from("candidates").update({ deleted_at: now }).eq("id", candidateId);
+    if (error) {
+      // Fallback to hard delete if deleted_at column is not yet present
+      if (assessmentId) await supabase.from("assessments").delete().eq("id", assessmentId);
+      await supabase.from("candidates").delete().eq("id", candidateId);
+    }
+    try {
+      await supabase.from("activity_history").insert({
+        action: "delete_candidate",
+        details: `Moved candidate #${candidateId} to Recycle Bin`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
     revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true };
+  });
+}
+
+export async function bulkDeleteCandidates(candidateIds: number[]) {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    if (!candidateIds.length) return { error: "No candidates selected." };
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("candidates").update({ deleted_at: now }).in("id", candidateIds);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "bulk_delete",
+        details: `Moved ${candidateIds.length} candidate(s) to Recycle Bin`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true, count: candidateIds.length };
+  });
+}
+
+export async function restoreCandidate(candidateId: number) {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    const { error } = await supabase.from("candidates").update({ deleted_at: null }).eq("id", candidateId);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "restore_candidate",
+        details: `Restored candidate #${candidateId} from Recycle Bin`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true };
+  });
+}
+
+export async function bulkRestoreCandidates(candidateIds: number[]) {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    if (!candidateIds.length) return { error: "No candidates selected." };
+    const { error } = await supabase.from("candidates").update({ deleted_at: null }).in("id", candidateIds);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "bulk_restore",
+        details: `Restored ${candidateIds.length} candidate(s) from Recycle Bin`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true, count: candidateIds.length };
+  });
+}
+
+export async function restoreAllRecycleBin() {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    const { data: candidates, error: fetchError } = await supabase
+      .from("candidates")
+      .select("id")
+      .not("deleted_at", "is", null);
+
+    if (fetchError) return { error: fetchError.message };
+    if (!candidates || !candidates.length) return { success: true, count: 0 };
+
+    const ids = candidates.map((c) => c.id);
+    const { error } = await supabase.from("candidates").update({ deleted_at: null }).in("id", ids);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "restore_all",
+        details: `Restored all ${ids.length} candidate(s) from Recycle Bin`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true, count: ids.length };
+  });
+}
+
+export async function permanentDeleteCandidate(candidateId: number) {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    await supabase.from("assessments").delete().eq("candidate_id", candidateId);
+    await supabase.from("call_logs").delete().eq("candidate_id", candidateId);
+    await supabase.from("candidate_categories").delete().eq("candidate_id", candidateId);
+    const { error } = await supabase.from("candidates").delete().eq("id", candidateId);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "permanent_delete",
+        details: `Permanently deleted candidate #${candidateId}`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true };
+  });
+}
+
+export async function bulkPermanentDeleteCandidates(candidateIds: number[]) {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    if (!candidateIds.length) return { error: "No candidates selected." };
+    await supabase.from("assessments").delete().in("candidate_id", candidateIds);
+    await supabase.from("call_logs").delete().in("candidate_id", candidateIds);
+    await supabase.from("candidate_categories").delete().in("candidate_id", candidateIds);
+    const { error } = await supabase.from("candidates").delete().in("id", candidateIds);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "bulk_permanent_delete",
+        details: `Permanently deleted ${candidateIds.length} candidate(s)`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true, count: candidateIds.length };
+  });
+}
+
+export async function emptyRecycleBin() {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    const { data: candidates, error: fetchError } = await supabase
+      .from("candidates")
+      .select("id")
+      .not("deleted_at", "is", null);
+
+    if (fetchError) return { error: fetchError.message };
+    if (!candidates || !candidates.length) return { success: true, count: 0 };
+
+    const ids = candidates.map((c) => c.id);
+    await supabase.from("assessments").delete().in("candidate_id", ids);
+    await supabase.from("call_logs").delete().in("candidate_id", ids);
+    await supabase.from("candidate_categories").delete().in("candidate_id", ids);
+    const { error } = await supabase.from("candidates").delete().in("id", ids);
+    if (error) return { error: error.message };
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "empty_recycle_bin",
+        details: `Emptied Recycle Bin (permanently deleted ${ids.length} candidate(s))`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true, count: ids.length };
+  });
+}
+
+export async function autoPurgeOldRecycleBin() {
+  return safeAction(async () => {
+    const { supabase } = await requireProfile("admin");
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: oldRows } = await supabase
+      .from("candidates")
+      .select("id")
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+
+    if (oldRows && oldRows.length) {
+      const ids = oldRows.map((r) => r.id);
+      await supabase.from("assessments").delete().in("candidate_id", ids);
+      await supabase.from("call_logs").delete().in("candidate_id", ids);
+      await supabase.from("candidate_categories").delete().in("candidate_id", ids);
+      await supabase.from("candidates").delete().in("id", ids);
+    }
+    revalidatePath("/admin/recycle-bin");
+    return { purged: oldRows?.length || 0 };
   });
 }
 
@@ -343,13 +551,18 @@ export async function previewCandidateImport(rows: ImportRow[], categoryId: numb
   });
 }
 
-export async function commitCandidateImport(preview: ImportPreviewRow[], categoryId: number | null) {
+export async function commitCandidateImport(
+  preview: ImportPreviewRow[],
+  categoryId: number | null,
+  batchInfo?: { batchId: string; filename: string }
+) {
   return safeAction(async () => {
     const { supabase, profile } = await requireProfile("admin");
     if (!preview.length) return { error: "Nothing to import." };
 
     let created = 0;
     let updated = 0;
+    const createdIds: number[] = [];
 
     for (const item of preview) {
       if (item.existingId) {
@@ -362,11 +575,6 @@ export async function commitCandidateImport(preview: ImportPreviewRow[], categor
           const { error } = await supabase.from("candidates").update(patch).eq("id", item.existingId);
           if (error) return { error: friendlyCandidateError(error) };
         }
-        // Adds this category as one of the candidate's memberships without
-        // disturbing any other category they already belong to. Skipped
-        // entirely for rows the preview already found unchanged (including
-        // already being a member) — every extra call here counts against
-        // the Worker's per-invocation subrequest budget.
         const needsCategoryWrite = categoryId && item.changes.some((ch) => ch.field === "category_membership");
         if (needsCategoryWrite) {
           await supabase.from("candidate_categories").upsert(
@@ -376,30 +584,138 @@ export async function commitCandidateImport(preview: ImportPreviewRow[], categor
         }
         if (item.changes.length) updated++;
       } else {
+        const candidatePayload: Record<string, unknown> = {
+          ...item.row,
+          category_id: categoryId,
+          interview_completed: false,
+          created_by: profile.id,
+        };
+        if (batchInfo?.batchId) {
+          candidatePayload.upload_batch_id = batchInfo.batchId;
+        }
+
         const { data: inserted, error } = await supabase
           .from("candidates")
-          .insert({
-            ...item.row,
-            category_id: categoryId,
-            interview_completed: false,
-            created_by: profile.id,
-          })
+          .insert(candidatePayload)
           .select("id")
           .single();
         if (error) return { error: friendlyCandidateError(error) };
         if (categoryId) {
           await supabase.from("candidate_categories").insert({ candidate_id: inserted.id, category_id: categoryId });
         }
+        createdIds.push(inserted.id);
         created++;
       }
     }
 
+    // Register / update batch metadata for History & Revoke
+    if (batchInfo?.batchId) {
+      try {
+        const { data: existingBatch } = await supabase
+          .from("upload_batches")
+          .select("candidate_ids, created_rows, updated_rows")
+          .eq("id", batchInfo.batchId)
+          .single();
+
+        const mergedIds = Array.from(new Set([...(existingBatch?.candidate_ids || []), ...createdIds]));
+        const totalCreated = (existingBatch?.created_rows || 0) + created;
+        const totalUpdated = (existingBatch?.updated_rows || 0) + updated;
+
+        await supabase.from("upload_batches").upsert({
+          id: batchInfo.batchId,
+          filename: batchInfo.filename,
+          total_rows: mergedIds.length + totalUpdated,
+          created_rows: totalCreated,
+          updated_rows: totalUpdated,
+          category_id: categoryId,
+          uploaded_by: profile.id,
+          status: "active",
+          candidate_ids: mergedIds,
+        });
+
+        await supabase.from("activity_history").insert({
+          action: "upload_excel",
+          details: `Imported "${batchInfo.filename}": ${created} created, ${updated} updated`,
+          performed_by: profile.id,
+        });
+      } catch {}
+    }
+
     revalidatePath("/admin");
+    revalidatePath("/admin/history");
     if (categoryId) {
       revalidatePath(`/admin/categories/${categoryId}`);
       revalidatePath("/admin/categories");
     }
-    return { success: true, created, updated };
+    return { success: true, created, updated, batchId: batchInfo?.batchId };
+  });
+}
+
+export async function revokeUploadBatch(batchId: string) {
+  return safeAction(async () => {
+    const { supabase, profile } = await requireProfile("admin");
+    const { data: batch, error: batchError } = await supabase
+      .from("upload_batches")
+      .select("*")
+      .eq("id", batchId)
+      .single();
+
+    if (batchError || !batch) return { error: "Upload batch not found." };
+    if (batch.status === "revoked") return { error: "This upload batch was already revoked." };
+
+    let candidateIds: number[] = batch.candidate_ids || [];
+    const { data: batchCandidates } = await supabase
+      .from("candidates")
+      .select("id")
+      .eq("upload_batch_id", batchId);
+
+    if (batchCandidates && batchCandidates.length) {
+      candidateIds = Array.from(new Set([...candidateIds, ...batchCandidates.map((c) => c.id)]));
+    }
+
+    if (candidateIds.length > 0) {
+      const now = new Date().toISOString();
+      await supabase.from("candidates").update({ deleted_at: now }).in("id", candidateIds);
+    }
+
+    await supabase.from("upload_batches").update({
+      status: "revoked",
+      revoked_at: new Date().toISOString(),
+    }).eq("id", batchId);
+
+    try {
+      await supabase.from("activity_history").insert({
+        action: "revoke_upload",
+        details: `Revoked upload batch "${batch.filename}" (${candidateIds.length} candidate(s) moved to Recycle Bin)`,
+        performed_by: profile.id,
+      });
+    } catch {}
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/history");
+    revalidatePath("/admin/recycle-bin");
+    return { success: true, count: candidateIds.length, filename: batch.filename };
+  });
+}
+
+export async function fixSerialNumbersSequentially() {
+  return safeAction(async () => {
+    const { supabase } = await requireProfile("admin");
+    const { data: candidates, error } = await supabase
+      .from("candidates")
+      .select("id")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (error) return { error: error.message };
+    if (!candidates || !candidates.length) return { success: true, updated: 0 };
+
+    for (let i = 0; i < candidates.length; i++) {
+      await supabase.from("candidates").update({ serial_number: i + 1 }).eq("id", candidates[i].id);
+    }
+
+    revalidatePath("/admin");
+    return { success: true, updated: candidates.length };
   });
 }
 

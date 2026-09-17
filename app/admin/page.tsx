@@ -31,9 +31,10 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   let pendingQuery = supabase
     .from("candidates")
     .select(
-      "id, serial_number, interview_date, candidate_name, candidate_mobile, candidate_email, district, assembly_constituency, pincode, ngo, dob, interview_started, assigned_to"
+      "id, serial_number, interview_date, candidate_name, candidate_mobile, candidate_email, district, assembly_constituency, pincode, ngo, dob, interview_started, assigned_to, deleted_at"
     )
     .eq("interview_completed", false)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (rowLimit) pendingQuery = pendingQuery.limit(rowLimit);
 
@@ -55,7 +56,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
     supabase.from("profiles").select("id, full_name, reg_no, profile_completed").eq("role", "interviewer").eq("is_active", true).order("full_name"),
     supabase.from("categories").select("*").order("name"),
     supabase.from("assessments").select("id", { count: "exact", head: true }),
-    supabase.from("candidates").select("id", { count: "exact", head: true }).eq("interview_completed", false),
+    supabase.from("candidates").select("id", { count: "exact", head: true }).eq("interview_completed", false).is("deleted_at", null),
     supabase.from("assessments").select("id", { count: "exact", head: true }).eq("final_decision", "Recommended"),
     supabase.from("assessments").select("final_score, interviewer_id"),
   ]);

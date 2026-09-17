@@ -6,7 +6,16 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CallLog, CallStatus, CandidateListRow, Category, Profile } from "@/lib/supabase/types";
 import { calculateAge } from "@/lib/age";
 import { logCall } from "../interview/actions";
-import { assignCandidate, deleteCandidate, previewCandidateImport, commitCandidateImport, type ImportRow, type ImportPreviewRow } from "./actions";
+import {
+  assignCandidate,
+  deleteCandidate,
+  previewCandidateImport,
+  commitCandidateImport,
+  revokeUploadBatch,
+  fixSerialNumbersSequentially,
+  type ImportRow,
+  type ImportPreviewRow,
+} from "./actions";
 import { CONSTITUENCIES } from "@/lib/data/constituencies";
 
 const DECISIONS = ["Recommended", "Hold", "Not Recommended", "Pending Interview"];
@@ -203,7 +212,11 @@ export default function CandidatesTable({
   const checkingLabel = importProgress ? `Checking… (${importProgress.done}/${importProgress.total})` : "Checking…";
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [openMenuRow, setOpenMenuRow] = useState<number | null>(null);
-  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [uploadedFileName, setUploadedFileName] = useState("");
+  const [lastBatchInfo, setLastBatchInfo] = useState<{ batchId: string; filename: string; count: number } | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [sortCol, setSortCol] = useState<"serial" | "interview_date" | "candidate_name" | "district" | "assembly_constituency" | "score" | "status" | "decision">("serial");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("asc");
 
   const districts = useMemo(() => Array.from(new Set(records.map((r) => r.district).filter(Boolean))).sort(), [records]);
   const constituencies = useMemo(
@@ -258,12 +271,34 @@ export default function CandidatesTable({
   const visibleRows = useMemo(() => {
     const arr = [...filtered];
     arr.sort((a, b) => {
-      const da = a.interview_date || "";
-      const db = b.interview_date || "";
-      return sortDir === "desc" ? db.localeCompare(da) : da.localeCompare(db);
+      let cmp = 0;
+      if (sortCol === "serial") {
+        cmp = (a.serial_number ?? 0) - (b.serial_number ?? 0);
+      } else if (sortCol === "interview_date") {
+        cmp = (a.interview_date || "").localeCompare(b.interview_date || "");
+      } else if (sortCol === "candidate_name") {
+        cmp = (a.candidate_name || "").localeCompare(b.candidate_name || "");
+      } else if (sortCol === "district") {
+        cmp = (a.district || "").localeCompare(b.district || "");
+      } else if (sortCol === "assembly_constituency") {
+        cmp = (a.assembly_constituency || "").localeCompare(b.assembly_constituency || "");
+      } else if (sortCol === "score") {
+        const sa = Number(a.final_score) || 0;
+        const sb = Number(b.final_score) || 0;
+        cmp = sa - sb;
+      } else if (sortCol === "status") {
+        const sa = a.pending ? (a.interview_started ? "In Progress" : "Not Started") : "Completed";
+        const sb = b.pending ? (b.interview_started ? "In Progress" : "Not Started") : "Completed";
+        cmp = sa.localeCompare(sb);
+      } else if (sortCol === "decision") {
+        const da = a.pending ? "Pending Interview" : (a.final_decision || "");
+        const db = b.pending ? "Pending Interview" : (b.final_decision || "");
+        cmp = da.localeCompare(db);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
     });
     return arr;
-  }, [filtered, sortDir]);
+  }, [filtered, sortCol, sortDir]);
 
   function clearFilters() {
     setDistrict("");
@@ -337,11 +372,11 @@ export default function CandidatesTable({
   }
 
   function handleDelete(assessmentId: number | null, candidateId: number) {
-    if (!confirm("Delete this candidate record permanently?")) return;
+    if (!confirm("Delete this candidate record? It will be moved to the Recycle Bin.")) return;
     setAssignError("");
     startTransition(async () => {
       const result = await deleteCandidate(assessmentId, candidateId);
-      if (result?.error) {
+      if (result && "error" in result && result.error) {
         setAssignError(result.error);
       }
     });
@@ -377,6 +412,7 @@ export default function CandidatesTable({
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadedFileName(file.name);
     setImportError("");
     setImportSuccess("");
     setImportPreview(null);
@@ -395,12 +431,6 @@ export default function CandidatesTable({
     setPreviewing(true);
     setImportProgress({ done: 0, total: rows.length });
 
-    // previewCandidateImport used to take the whole sheet in one server
-    // action call — for a few thousand rows, building + returning that much
-    // data in a single Worker invocation was enough to exceed Cloudflare's
-    // CPU-time budget on its own (a 503 with no application-level error),
-    // separately from the commit step already batched below. Chunk it the
-    // same way.
     const PREVIEW_BATCH_SIZE = 200;
     const mergedPreview: ImportPreviewRow[] = [];
     for (let i = 0; i < rows.length; i += PREVIEW_BATCH_SIZE) {
@@ -418,9 +448,6 @@ export default function CandidatesTable({
     setPreviewing(false);
     setImportProgress(null);
 
-    // Each chunk only dedupes duplicate mobiles within itself — dedupe
-    // across chunk boundaries here, keeping the first occurrence (matches
-    // the previous single-call behavior).
     const seen = new Set<string>();
     const deduped = mergedPreview.filter((p) => {
       if (seen.has(p.row.candidate_mobile)) return false;
@@ -430,13 +457,6 @@ export default function CandidatesTable({
     setImportPreview(deduped);
   }
 
-  // Each server action call is its own Worker invocation, and Cloudflare
-  // caps how many outbound subrequests (Supabase calls) a single invocation
-  // can make — a bulk import of a few hundred rows, each needing its own
-  // insert/update call (plus a second call for a candidate_categories
-  // membership row, when a category is set), blows past that. Splitting
-  // into small batches keeps every invocation's subrequest count well
-  // under the limit.
   const IMPORT_BATCH_SIZE = 10;
 
   async function handleConfirmImport() {
@@ -445,12 +465,14 @@ export default function CandidatesTable({
     setImportError("");
     setImportProgress({ done: 0, total: importPreview.length });
 
+    const batchId = "batch_" + Date.now();
+    const filename = uploadedFileName || "Upload.xlsx";
     let created = 0;
     let updated = 0;
 
     for (let i = 0; i < importPreview.length; i += IMPORT_BATCH_SIZE) {
       const batch = importPreview.slice(i, i + IMPORT_BATCH_SIZE);
-      const result = await commitCandidateImport(batch, categoryId ?? null);
+      const result = await commitCandidateImport(batch, categoryId ?? null, { batchId, filename });
       if (result.error || !("created" in result)) {
         setImporting(false);
         setImportProgress(null);
@@ -473,8 +495,41 @@ export default function CandidatesTable({
     const unchanged = importPreview.filter((r) => r.status === "unchanged").length;
     if (unchanged) parts.push(`${unchanged} unchanged`);
     setImportSuccess(parts.length ? parts.join(", ") + "." : "Nothing changed.");
+    if (created > 0 || updated > 0) {
+      setLastBatchInfo({ batchId, filename, count: created + updated });
+    }
     setImportPreview(null);
     if (importFileRef.current) importFileRef.current.value = "";
+  }
+
+  function handleRevokeBatch(batchId: string) {
+    if (!confirm("Revoke this Excel upload? Newly added candidates from this file will be moved to the Recycle Bin.")) return;
+    startTransition(async () => {
+      const res = await revokeUploadBatch(batchId);
+      if (res && "error" in res && res.error) {
+        setActionMessage({ type: "error", text: res.error });
+      } else if (res && "success" in res) {
+        setLastBatchInfo(null);
+        setActionMessage({
+          type: "success",
+          text: `Revoked upload "${res.filename || 'batch'}". ${res.count ?? 0} candidate(s) moved to the Recycle Bin. You can restore them anytime.`,
+        });
+        router.refresh();
+      }
+    });
+  }
+
+  function handleFixSerialNumbers() {
+    if (!confirm("Re-sequence all candidate serial numbers from 1, 2, 3... sequentially?")) return;
+    startTransition(async () => {
+      const res = await fixSerialNumbersSequentially();
+      if (res && "error" in res && res.error) {
+        setActionMessage({ type: "error", text: res.error });
+      } else if (res && "success" in res) {
+        setActionMessage({ type: "success", text: `Updated ${res.updated ?? 0} candidate serial numbers sequentially.` });
+        router.refresh();
+      }
+    });
   }
 
   function cancelImport() {
@@ -583,6 +638,16 @@ export default function CandidatesTable({
           )}
           {isAdmin && (
             <button
+              onClick={handleFixSerialNumbers}
+              disabled={isPending}
+              title="Re-order all serial numbers sequentially from 1, 2, 3... in database"
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg px-3 py-2 whitespace-nowrap"
+            >
+              🔢 Fix S.No Order
+            </button>
+          )}
+          {isAdmin && (
+            <button
               onClick={() => importFileRef.current?.click()}
               disabled={previewing}
               className="bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-gray-700 text-sm font-semibold rounded-lg px-4 py-2 whitespace-nowrap"
@@ -608,7 +673,39 @@ export default function CandidatesTable({
         </div>
       </div>
 
-      {importSuccess && !importPreview && (
+      {actionMessage && (
+        <div
+          className={`text-sm border-b px-4 py-3 flex items-center justify-between gap-2 ${
+            actionMessage.type === "success" ? "text-green-800 bg-green-50 border-green-200" : "text-red-800 bg-red-50 border-red-200"
+          }`}
+        >
+          <span>{actionMessage.text}</span>
+          <button onClick={() => setActionMessage(null)} className="text-xs font-bold underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {lastBatchInfo && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm text-amber-900">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-base">⚠️ Uploaded &ldquo;{lastBatchInfo.filename}&rdquo;</span>
+            <span className="text-xs text-amber-700">({lastBatchInfo.count} records processed)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-amber-800 font-medium">Wrong spreadsheet uploaded?</span>
+            <button
+              onClick={() => handleRevokeBatch(lastBatchInfo.batchId)}
+              disabled={isPending}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1 transition-all"
+            >
+              ↩ Revoke / Undo This Upload
+            </button>
+          </div>
+        </div>
+      )}
+
+      {importSuccess && !importPreview && !lastBatchInfo && (
         <p className="text-sm text-green-700 bg-green-50 border-b border-green-200 px-4 py-2">{importSuccess}</p>
       )}
 
@@ -869,20 +966,35 @@ export default function CandidatesTable({
       </div>
 
       {/* Mobile summary + sort row */}
-      <div className="flex sm:hidden items-center justify-between px-4 py-3 border-b border-[#e2e6ed] text-xs">
-        <span className="text-gray-500">{visibleRows.length} Candidates</span>
-        <button
-          onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-          className="flex items-center gap-1 text-gray-500 font-medium"
-        >
-          Sorted by: Date ({sortDir === "desc" ? "Newest" : "Oldest"})
-          <ArrowUpDownIcon className="w-3.5 h-3.5" />
-        </button>
+      <div className="flex sm:hidden flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-[#e2e6ed] text-xs bg-gray-50">
+        <span className="font-semibold text-gray-700">{visibleRows.length} Candidates</span>
+        <div className="flex items-center gap-1.5">
+          <select
+            value={sortCol}
+            onChange={(e) => setSortCol(e.target.value as typeof sortCol)}
+            className="rounded border border-gray-300 px-2 py-1 text-xs bg-white text-gray-700"
+          >
+            <option value="serial">S.No</option>
+            <option value="interview_date">Date</option>
+            <option value="candidate_name">Name</option>
+            <option value="district">District</option>
+            <option value="assembly_constituency">Constituency</option>
+            <option value="score">Score</option>
+            <option value="status">Status</option>
+            <option value="decision">Decision</option>
+          </select>
+          <button
+            onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+            className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-300 rounded text-gray-700 font-medium"
+          >
+            {sortDir === "asc" ? "▲ Asc" : "▼ Desc"}
+          </button>
+        </div>
       </div>
 
       {/* Mobile card list */}
       <div className="sm:hidden divide-y divide-[#f0f2f6]">
-        {visibleRows.map((r) => {
+        {visibleRows.map((r, index) => {
           const key = r.pending ? `pending-${r.candidate_id}` : `assessment-${r.assessment_id}`;
           const initials = r.candidate_name
             .split(" ")
@@ -919,9 +1031,11 @@ export default function CandidatesTable({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-gray-900 truncate">
-                      <span className="text-gray-400 font-semibold mr-1">#{r.serial_number}</span>
-                      {r.candidate_name}
+                    <p className="font-bold text-gray-900 truncate flex items-center gap-1.5">
+                      <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 text-[11px] font-bold px-1.5 py-0.5 rounded">
+                        #{index + 1}
+                      </span>
+                      <span>{r.candidate_name}</span>
                     </p>
                     <div className="relative shrink-0">
                       {(r.pending || isAdmin) && (
@@ -1119,35 +1233,106 @@ export default function CandidatesTable({
       <div className="hidden sm:block overflow-x-auto">
         <table className="w-full text-sm whitespace-nowrap">
           <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-[#e2e6ed]">
-              <th className="p-3">S.No</th>
-              <th className="p-3">Date</th>
-              <th className="p-3">Candidate</th>
+            <tr className="text-left text-xs text-gray-500 border-b border-[#e2e6ed] select-none bg-gray-50/50">
+              <th
+                onClick={() => {
+                  if (sortCol === "serial") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("serial"); setSortDir("asc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                S.No {sortCol === "serial" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
+              <th
+                onClick={() => {
+                  if (sortCol === "interview_date") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("interview_date"); setSortDir("desc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                Date {sortCol === "interview_date" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
+              <th
+                onClick={() => {
+                  if (sortCol === "candidate_name") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("candidate_name"); setSortDir("asc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                Candidate {sortCol === "candidate_name" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
               <th className="p-3">Mobile</th>
-              <th className="p-3">District</th>
-              <th className="p-3">Constituency</th>
+              <th
+                onClick={() => {
+                  if (sortCol === "district") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("district"); setSortDir("asc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                District {sortCol === "district" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
+              <th
+                onClick={() => {
+                  if (sortCol === "assembly_constituency") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("assembly_constituency"); setSortDir("asc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                Constituency {sortCol === "assembly_constituency" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
               <th className="p-3">Pincode</th>
               <th className="p-3">NGO</th>
               <th className="p-3">Category</th>
               <th className="p-3">Age</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Score</th>
+              <th
+                onClick={() => {
+                  if (sortCol === "status") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("status"); setSortDir("asc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                Status {sortCol === "status" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
+              <th
+                onClick={() => {
+                  if (sortCol === "score") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("score"); setSortDir("desc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                Score {sortCol === "score" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
               <th className="p-3">Suggested Role</th>
-              <th className="p-3">Decision</th>
+              <th
+                onClick={() => {
+                  if (sortCol === "decision") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol("decision"); setSortDir("asc"); }
+                }}
+                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
+              >
+                Decision {sortCol === "decision" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
               <th className="p-3">Calls</th>
               <th className="p-3">Interviewer</th>
               <th className="p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {visibleRows.map((r) => {
+            {visibleRows.map((r, index) => {
               const key = r.pending ? `pending-${r.candidate_id}` : `assessment-${r.assessment_id}`;
 
               if (r.pending) {
                 return (
                   <React.Fragment key={key}>
                   <tr className="border-b border-[#f0f2f6] hover:bg-gray-50">
-                    <td className="p-3 text-gray-400">{r.serial_number}</td>
+                    <td className="p-3 font-semibold text-gray-800">
+                      <span>{index + 1}</span>
+                      {r.serial_number && r.serial_number !== index + 1 ? (
+                        <span className="text-[10px] text-gray-400 block font-normal" title="Database Serial Number">
+                          (SN {r.serial_number})
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="p-3">{r.interview_date}</td>
                     <td className="p-3 font-semibold">{r.candidate_name}</td>
                     <td className="p-3">{r.candidate_mobile}</td>
@@ -1348,7 +1533,14 @@ export default function CandidatesTable({
                       : "bg-gray-100 text-gray-500";
               return (
                 <tr key={key} className="border-b border-[#f0f2f6] hover:bg-gray-50">
-                  <td className="p-3 text-gray-400">{r.serial_number}</td>
+                  <td className="p-3 font-semibold text-gray-800">
+                    <span>{index + 1}</span>
+                    {r.serial_number && r.serial_number !== index + 1 ? (
+                      <span className="text-[10px] text-gray-400 block font-normal" title="Database Serial Number">
+                        (SN {r.serial_number})
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="p-3">{r.interview_date}</td>
                   <td className="p-3 font-semibold">{r.candidate_name}</td>
                   <td className="p-3">{r.candidate_mobile}</td>
