@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { QUESTIONS } from "@/lib/data/questions";
 import { DISTRICTS } from "@/lib/data/districts";
 import { constituenciesForDistrict } from "@/lib/data/constituencies";
+import { getPanchayatsForConstituency, getDefaultPincodeForConstituency } from "@/lib/data/panchayats";
 import { ADDITIONAL_ROLE_OPTIONS, CURRENT_TNV_ROLE_OPTIONS } from "@/lib/data/roles";
 import { calculateAge } from "@/lib/age";
 import type { Category } from "@/lib/supabase/types";
@@ -17,6 +18,9 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
   const [dob, setDob] = useState("");
   const age = calculateAge(dob);
   const [district, setDistrict] = useState("");
+  const [constituency, setConstituency] = useState("");
+  const [panchayatArea, setPanchayatArea] = useState("");
+  const [pincode, setPincode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -70,7 +74,12 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
             name="district"
             options={DISTRICTS as unknown as string[]}
             required
-            onValueChange={setDistrict}
+            onValueChange={(v) => {
+              setDistrict(v);
+              setConstituency("");
+              setPanchayatArea("");
+              setPincode("");
+            }}
           />
           <SelectField
             key={district}
@@ -78,9 +87,82 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
             name="assembly_constituency"
             options={constituenciesForDistrict(district) as string[]}
             required
+            onValueChange={(v) => {
+              setConstituency(v);
+              setPanchayatArea("");
+              setPincode(getDefaultPincodeForConstituency(v) || "");
+            }}
           />
-          <Field label="Panchayat / Area *" name="panchayat_area" required />
-          <Field label="Pincode" name="pincode" />
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Panchayat / Area *
+            </label>
+            <input
+              list="admin-new-panchayats-list"
+              name="panchayat_area"
+              type="text"
+              value={panchayatArea}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPanchayatArea(val);
+                const panchayats = getPanchayatsForConstituency(constituency);
+                const matched = panchayats.find(
+                  (p) => p.name.toLowerCase() === val.toLowerCase().trim()
+                );
+                if (matched) {
+                  setPincode(matched.pincode);
+                }
+              }}
+              placeholder={
+                constituency
+                  ? "Select or type Panchayat / Area"
+                  : "Select Constituency first"
+              }
+              required
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a]"
+            />
+            <datalist id="admin-new-panchayats-list">
+              {getPanchayatsForConstituency(constituency).map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} (PIN: {p.pincode})
+                </option>
+              ))}
+            </datalist>
+            {getPanchayatsForConstituency(constituency).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                <span className="text-[11px] text-gray-400">Suggestions:</span>
+                {getPanchayatsForConstituency(constituency)
+                  .slice(0, 4)
+                  .map((p) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      onClick={() => {
+                        setPanchayatArea(p.name);
+                        setPincode(p.pincode);
+                      }}
+                      className="text-[11px] bg-gray-100 hover:bg-[#eaf5ea] hover:text-[#1a6b1a] text-gray-700 rounded px-2 py-0.5 transition border border-gray-200"
+                    >
+                      {p.name} ({p.pincode})
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Pincode {pincode && <span className="text-[11px] font-normal text-[#1a6b1a]">(Auto-fetched)</span>}
+            </label>
+            <input
+              name="pincode"
+              type="text"
+              value={pincode}
+              onChange={(e) => setPincode(e.target.value)}
+              placeholder="e.g. 600001"
+              maxLength={6}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a]"
+            />
+          </div>
           <Field label="NGO" name="ngo" />
           <SelectField label="Current TNV Role" name="current_tnv_role" options={CURRENT_TNV_ROLE_OPTIONS as unknown as string[]} />
           <div>
