@@ -827,7 +827,7 @@ export default function CandidatesTable({
           onChange={(e) => setConstituency(e.target.value)}
           className="w-full sm:w-auto rounded-lg border border-gray-300 px-3 py-1.5 text-xs bg-white"
         >
-          <option value="">All Constituencies</option>
+          <option value="">All Taluks / Constituencies</option>
           {constituencies.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -978,7 +978,7 @@ export default function CandidatesTable({
             <option value="interview_date">Date</option>
             <option value="candidate_name">Name</option>
             <option value="district">District</option>
-            <option value="assembly_constituency">Constituency</option>
+            <option value="assembly_constituency">Taluk / Constituency</option>
             <option value="score">Score</option>
             <option value="status">Status</option>
             <option value="decision">Decision</option>
@@ -1278,7 +1278,7 @@ export default function CandidatesTable({
                 }}
                 className="p-3 cursor-pointer hover:bg-gray-100 transition-colors font-semibold"
               >
-                Constituency {sortCol === "assembly_constituency" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                Taluk / Constituency {sortCol === "assembly_constituency" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
               <th className="p-3">Pincode</th>
               <th className="p-3">NGO</th>

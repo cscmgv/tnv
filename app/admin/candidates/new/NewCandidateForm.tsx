@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { QUESTIONS } from "@/lib/data/questions";
 import { DISTRICTS } from "@/lib/data/districts";
-import { constituenciesForDistrict } from "@/lib/data/constituencies";
-import { getPanchayatsForConstituency, getDefaultPincodeForConstituency } from "@/lib/data/panchayats";
+import { getTaluksForDistrict, getPanchayatsForTaluk, getDefaultPincodeForTaluk } from "@/lib/data/taluks";
 import { ADDITIONAL_ROLE_OPTIONS, CURRENT_TNV_ROLE_OPTIONS } from "@/lib/data/roles";
 import { calculateAge } from "@/lib/age";
 import type { Category } from "@/lib/supabase/types";
@@ -18,7 +17,7 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
   const [dob, setDob] = useState("");
   const age = calculateAge(dob);
   const [district, setDistrict] = useState("");
-  const [constituency, setConstituency] = useState("");
+  const [taluk, setTaluk] = useState("");
   const [panchayatArea, setPanchayatArea] = useState("");
   const [pincode, setPincode] = useState("");
   const [pending, setPending] = useState(false);
@@ -76,23 +75,24 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
             required
             onValueChange={(v) => {
               setDistrict(v);
-              setConstituency("");
+              setTaluk("");
               setPanchayatArea("");
               setPincode("");
             }}
           />
           <SelectField
             key={district}
-            label="Assembly Constituency *"
-            name="assembly_constituency"
-            options={constituenciesForDistrict(district) as string[]}
+            label="Taluk *"
+            name="taluk"
+            options={getTaluksForDistrict(district)}
             required
             onValueChange={(v) => {
-              setConstituency(v);
+              setTaluk(v);
               setPanchayatArea("");
-              setPincode(getDefaultPincodeForConstituency(v) || "");
+              setPincode(getDefaultPincodeForTaluk(district, v) || "");
             }}
           />
+          <input type="hidden" name="assembly_constituency" value={taluk} />
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">
               Panchayat / Area *
@@ -105,7 +105,7 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
               onChange={(e) => {
                 const val = e.target.value;
                 setPanchayatArea(val);
-                const panchayats = getPanchayatsForConstituency(constituency);
+                const panchayats = getPanchayatsForTaluk(district, taluk);
                 const matched = panchayats.find(
                   (p) => p.name.toLowerCase() === val.toLowerCase().trim()
                 );
@@ -114,25 +114,25 @@ export default function NewCandidateForm({ categories, defaultCategoryId = "" }:
                 }
               }}
               placeholder={
-                constituency
+                taluk
                   ? "Select or type Panchayat / Area"
-                  : "Select Constituency first"
+                  : "Select Taluk first"
               }
               required
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a]"
             />
             <datalist id="admin-new-panchayats-list">
-              {getPanchayatsForConstituency(constituency).map((p) => (
+              {getPanchayatsForTaluk(district, taluk).map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.name} (PIN: {p.pincode})
                 </option>
               ))}
             </datalist>
-            {getPanchayatsForConstituency(constituency).length > 0 && (
+            {getPanchayatsForTaluk(district, taluk).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
                 <span className="text-[11px] text-gray-400">Suggestions:</span>
-                {getPanchayatsForConstituency(constituency)
-                  .slice(0, 4)
+                {getPanchayatsForTaluk(district, taluk)
+                  .slice(0, 5)
                   .map((p) => (
                     <button
                       key={p.name}

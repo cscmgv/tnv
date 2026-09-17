@@ -2,8 +2,11 @@
 
 import { useRef, useState } from "react";
 import { DISTRICTS } from "@/lib/data/districts";
-import { constituenciesForDistrict } from "@/lib/data/constituencies";
-import { getPanchayatsForConstituency, getDefaultPincodeForConstituency } from "@/lib/data/panchayats";
+import {
+  getTaluksForDistrict,
+  getPanchayatsForTaluk,
+  getDefaultPincodeForTaluk,
+} from "@/lib/data/taluks";
 import { CURRENT_TNV_ROLE_OPTIONS } from "@/lib/data/roles";
 import { calculateAge } from "@/lib/age";
 import { submitInterviewerApplication, type InterviewerApplicationInput } from "./actions";
@@ -14,6 +17,7 @@ const emptyForm: InterviewerApplicationInput = {
   email: "",
   dob: "",
   district: "",
+  taluk: "",
   assembly_constituency: "",
   panchayat_area: "",
   pincode: "",
@@ -112,6 +116,7 @@ export default function ApplyInterviewerForm() {
               setForm((prev) => ({
                 ...prev,
                 district: v,
+                taluk: "",
                 assembly_constituency: "",
                 panchayat_area: "",
                 pincode: "",
@@ -120,14 +125,15 @@ export default function ApplyInterviewerForm() {
           />
           <SelectField
             key={form.district}
-            label="Assembly Constituency *"
-            value={form.assembly_constituency}
-            options={constituenciesForDistrict(form.district) as string[]}
+            label="Taluk *"
+            value={form.taluk || form.assembly_constituency || ""}
+            options={getTaluksForDistrict(form.district)}
             required
             onChange={(v) => {
-              const defaultPin = getDefaultPincodeForConstituency(v) || "";
+              const defaultPin = getDefaultPincodeForTaluk(form.district, v) || "";
               setForm((prev) => ({
                 ...prev,
+                taluk: v,
                 assembly_constituency: v,
                 panchayat_area: "",
                 pincode: defaultPin,
@@ -138,60 +144,65 @@ export default function ApplyInterviewerForm() {
             <label className="block text-xs font-semibold text-gray-600 mb-1">
               Panchayat / Area *
             </label>
-            <input
-              list="interviewer-panchayats-list"
-              type="text"
-              value={form.panchayat_area}
-              onChange={(e) => {
-                const val = e.target.value;
-                const panchayats = getPanchayatsForConstituency(form.assembly_constituency);
-                const matched = panchayats.find(
-                  (p) => p.name.toLowerCase() === val.toLowerCase().trim()
-                );
-                setForm((prev) => ({
-                  ...prev,
-                  panchayat_area: val,
-                  ...(matched ? { pincode: matched.pincode } : {}),
-                }));
-              }}
-              placeholder={
-                form.assembly_constituency
-                  ? "Select or type Panchayat / Area"
-                  : "Select Constituency first"
-              }
-              required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a]"
-            />
-            <datalist id="interviewer-panchayats-list">
-              {getPanchayatsForConstituency(form.assembly_constituency).map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name} (PIN: {p.pincode})
-                </option>
-              ))}
-            </datalist>
-            {getPanchayatsForConstituency(form.assembly_constituency).length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
-                <span className="text-[11px] text-gray-400">Suggestions:</span>
-                {getPanchayatsForConstituency(form.assembly_constituency)
-                  .slice(0, 4)
-                  .map((p) => (
-                    <button
-                      key={p.name}
-                      type="button"
-                      onClick={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          panchayat_area: p.name,
-                          pincode: p.pincode,
-                        }))
-                      }
-                      className="text-[11px] bg-gray-100 hover:bg-[#eaf5ea] hover:text-[#1a6b1a] text-gray-700 rounded px-2 py-0.5 transition border border-gray-200"
-                    >
-                      {p.name} ({p.pincode})
-                    </button>
-                  ))}
-              </div>
-            )}
+            {(() => {
+              const currentTaluk = form.taluk || form.assembly_constituency || "";
+              const panchayats = getPanchayatsForTaluk(form.district, currentTaluk);
+              return (
+                <>
+                  <input
+                    list="interviewer-panchayats-list"
+                    type="text"
+                    value={form.panchayat_area}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const matched = panchayats.find(
+                        (p) => p.name.toLowerCase() === val.toLowerCase().trim()
+                      );
+                      setForm((prev) => ({
+                        ...prev,
+                        panchayat_area: val,
+                        ...(matched ? { pincode: matched.pincode } : {}),
+                      }));
+                    }}
+                    placeholder={
+                      currentTaluk
+                        ? "Select or type Panchayat / Area"
+                        : "Select Taluk first"
+                    }
+                    required
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a]"
+                  />
+                  <datalist id="interviewer-panchayats-list">
+                    {panchayats.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name} (PIN: {p.pincode})
+                      </option>
+                    ))}
+                  </datalist>
+                  {panchayats.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                      <span className="text-[11px] text-gray-400">Suggestions:</span>
+                      {panchayats.slice(0, 5).map((p) => (
+                        <button
+                          key={p.name}
+                          type="button"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              panchayat_area: p.name,
+                              pincode: p.pincode,
+                            }))
+                          }
+                          className="text-[11px] bg-gray-100 hover:bg-[#eaf5ea] hover:text-[#1a6b1a] text-gray-700 rounded px-2 py-0.5 transition border border-gray-200"
+                        >
+                          {p.name} ({p.pincode})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">

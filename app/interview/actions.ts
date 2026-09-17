@@ -31,6 +31,7 @@ export type CandidateInput = {
   email: string;
   date: string;
   district: string;
+  taluk?: string;
   constituency: string;
   panchayat: string;
   pincode: string;
@@ -76,7 +77,8 @@ export async function startInterview(candidate: CandidateInput, existingCandidat
       candidate_email: candidate.email || null,
       interview_date: candidate.date,
       district: candidate.district,
-      assembly_constituency: candidate.constituency,
+      taluk: candidate.taluk || candidate.constituency,
+      assembly_constituency: candidate.taluk || candidate.constituency,
       panchayat_area: candidate.panchayat,
       pincode: candidate.pincode || null,
       ngo: candidate.ngo || null,
@@ -199,7 +201,8 @@ export async function saveAssessment(
         candidate_email: candidate.email || null,
         interview_date: candidate.date,
         district: candidate.district,
-        assembly_constituency: candidate.constituency,
+        taluk: candidate.taluk || candidate.constituency,
+        assembly_constituency: candidate.taluk || candidate.constituency,
         panchayat_area: candidate.panchayat,
         pincode: candidate.pincode || null,
         ngo: candidate.ngo || null,
@@ -222,7 +225,8 @@ export async function saveAssessment(
         candidate_email: candidate.email || null,
         interview_date: candidate.date,
         district: candidate.district,
-        assembly_constituency: candidate.constituency,
+        taluk: candidate.taluk || candidate.constituency,
+        assembly_constituency: candidate.taluk || candidate.constituency,
         panchayat_area: candidate.panchayat,
         pincode: candidate.pincode || null,
         ngo: candidate.ngo || null,

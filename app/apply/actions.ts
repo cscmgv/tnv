@@ -10,7 +10,8 @@ export type ApplicationInput = {
   candidate_email: string;
   dob: string;
   district: string;
-  assembly_constituency: string;
+  taluk?: string;
+  assembly_constituency?: string;
   panchayat_area: string;
   pincode: string;
   ngo: string;
@@ -33,7 +34,8 @@ export async function submitCandidateApplication(input: ApplicationInput, ref: s
     const candidate_email = input.candidate_email.trim() || null;
     const dob = input.dob.trim() || null;
     const district = input.district.trim();
-    const assembly_constituency = input.assembly_constituency.trim();
+    const taluk = (input.taluk || input.assembly_constituency || "").trim();
+    const assembly_constituency = (input.assembly_constituency || taluk).trim();
     const panchayat_area = input.panchayat_area.trim();
     const pincode = input.pincode.trim() || null;
     const ngo = input.ngo.trim() || null;
@@ -50,7 +52,7 @@ export async function submitCandidateApplication(input: ApplicationInput, ref: s
     if (!candidate_name) return { error: "Name is required." };
     if (!/^[6-9]\d{9}$/.test(candidate_mobile)) return { error: "Enter a valid 10-digit mobile number." };
     if (!district) return { error: "District is required." };
-    if (!assembly_constituency) return { error: "Assembly constituency is required." };
+    if (!taluk && !assembly_constituency) return { error: "Taluk is required." };
     if (!panchayat_area) return { error: "Panchayat / area is required." };
 
     // A referral link identifies who to attribute this signup to. If it
@@ -89,6 +91,7 @@ export async function submitCandidateApplication(input: ApplicationInput, ref: s
         candidate_email,
         dob,
         district,
+        taluk,
         assembly_constituency,
         panchayat_area,
         pincode,

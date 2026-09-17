@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { QUESTIONS } from "@/lib/data/questions";
 import { DISTRICTS } from "@/lib/data/districts";
-import { constituenciesForDistrict } from "@/lib/data/constituencies";
+import { getTaluksForDistrict, getPanchayatsForTaluk, getDefaultPincodeForTaluk } from "@/lib/data/taluks";
 import { getRoleFromScore, ADDITIONAL_ROLE_OPTIONS, CURRENT_TNV_ROLE_OPTIONS, ROLE_ALLOCATION_TABLE } from "@/lib/data/roles";
 import { calculateAge } from "@/lib/age";
 import AssessmentReport from "@/app/components/AssessmentReport";
@@ -384,17 +384,110 @@ export default function InterviewWizard({
               )}
             </div>
             <TextField label="Interview Date *" type="date" value={candidate.date} error={errors.date} onChange={(v) => setCandidate({ ...candidate, date: v })} />
-            <SelectField label="District *" value={candidate.district} error={errors.district} options={DISTRICTS as unknown as string[]} onChange={(v) => setCandidate({ ...candidate, district: v, constituency: "" })} />
+            <SelectField
+              label="District *"
+              value={candidate.district}
+              error={errors.district}
+              options={DISTRICTS as unknown as string[]}
+              onChange={(v) =>
+                setCandidate({
+                  ...candidate,
+                  district: v,
+                  constituency: "",
+                  taluk: "",
+                  panchayat: "",
+                  pincode: "",
+                })
+              }
+            />
             <SelectField
               key={candidate.district}
-              label="Assembly Constituency *"
-              value={candidate.constituency}
+              label="Taluk *"
+              value={candidate.taluk || candidate.constituency}
               error={errors.constituency}
-              options={constituenciesForDistrict(candidate.district) as string[]}
-              onChange={(v) => setCandidate({ ...candidate, constituency: v })}
+              options={getTaluksForDistrict(candidate.district)}
+              onChange={(v) =>
+                setCandidate({
+                  ...candidate,
+                  constituency: v,
+                  taluk: v,
+                  panchayat: "",
+                  pincode: getDefaultPincodeForTaluk(candidate.district, v) || "",
+                })
+              }
             />
-            <TextField label="Panchayat / Area *" value={candidate.panchayat} error={errors.panchayat} onChange={(v) => setCandidate({ ...candidate, panchayat: v })} />
-            <TextField label="Pincode" value={candidate.pincode} onChange={(v) => setCandidate({ ...candidate, pincode: v })} />
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Panchayat / Area *
+              </label>
+              <input
+                list="interview-panchayats-list"
+                type="text"
+                value={candidate.panchayat}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const curTaluk = candidate.taluk || candidate.constituency;
+                  const panchayats = getPanchayatsForTaluk(candidate.district, curTaluk);
+                  const matched = panchayats.find((p) => p.name.toLowerCase() === val.toLowerCase().trim());
+                  setCandidate({
+                    ...candidate,
+                    panchayat: val,
+                    pincode: matched ? matched.pincode : candidate.pincode,
+                  });
+                }}
+                placeholder={
+                  (candidate.taluk || candidate.constituency)
+                    ? "Select or type Panchayat / Area"
+                    : "Select Taluk first"
+                }
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a] ${
+                  errors.panchayat ? "border-red-400 bg-red-50" : "border-gray-300"
+                }`}
+              />
+              <datalist id="interview-panchayats-list">
+                {getPanchayatsForTaluk(candidate.district, candidate.taluk || candidate.constituency).map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} (PIN: {p.pincode})
+                  </option>
+                ))}
+              </datalist>
+              {getPanchayatsForTaluk(candidate.district, candidate.taluk || candidate.constituency).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                  <span className="text-[11px] text-gray-400">Suggestions:</span>
+                  {getPanchayatsForTaluk(candidate.district, candidate.taluk || candidate.constituency)
+                    .slice(0, 5)
+                    .map((p) => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => {
+                          setCandidate({
+                            ...candidate,
+                            panchayat: p.name,
+                            pincode: p.pincode,
+                          });
+                        }}
+                        className="text-[11px] bg-gray-100 hover:bg-[#eaf5ea] hover:text-[#1a6b1a] text-gray-700 rounded px-2 py-0.5 transition border border-gray-200"
+                      >
+                        {p.name} ({p.pincode})
+                      </button>
+                    ))}
+                </div>
+              )}
+              {errors.panchayat && <p className="text-xs text-red-500 mt-1">Required</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Pincode {candidate.pincode && <span className="text-[11px] font-normal text-[#1a6b1a]">(Auto-fetched)</span>}
+              </label>
+              <input
+                type="text"
+                value={candidate.pincode}
+                onChange={(e) => setCandidate({ ...candidate, pincode: e.target.value })}
+                placeholder="e.g. 600001"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#1a6b1a]"
+              />
+            </div>
             <TextField label="NGO" value={candidate.ngo} onChange={(v) => setCandidate({ ...candidate, ngo: v })} />
             <SelectField
               label="Current TNV Role *"
@@ -583,7 +676,8 @@ export default function InterviewWizard({
               candidateMobile={candidate.mobile}
               candidateEmail={candidate.email}
               district={candidate.district}
-              constituency={candidate.constituency}
+              taluk={candidate.taluk || candidate.constituency}
+              constituency={candidate.taluk || candidate.constituency}
               panchayat={candidate.panchayat}
               pincode={candidate.pincode}
               ngo={candidate.ngo}

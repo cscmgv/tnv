@@ -30,6 +30,7 @@ export type Candidate = {
   interview_date: string;
   district: string;
   assembly_constituency: string;
+  taluk?: string | null;
   panchayat_area: string;
   pincode: string | null;
   ngo: string | null;
@@ -130,7 +131,8 @@ export type FullReportRow = {
   candidate_email: string | null;
   district: string;
   assembly_constituency: string;
-  panchayat_area: string;
+  taluk?: string | null;
+  panchayat_area?: string | null;
   pincode: string | null;
   ngo: string | null;
   dob: string | null;
@@ -165,6 +167,8 @@ export type CandidateListRow =
       candidate_email: string | null;
       district: string;
       assembly_constituency: string;
+      taluk?: string | null;
+      panchayat_area?: string | null;
       pincode: string | null;
       ngo: string | null;
       dob: string | null;

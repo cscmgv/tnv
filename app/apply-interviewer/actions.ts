@@ -9,7 +9,8 @@ export type InterviewerApplicationInput = {
   email: string;
   dob: string;
   district: string;
-  assembly_constituency: string;
+  taluk?: string;
+  assembly_constituency?: string;
   panchayat_area: string;
   pincode: string;
   ngo: string;
@@ -33,7 +34,8 @@ export async function submitInterviewerApplication(input: InterviewerApplication
     const email = input.email.trim().toLowerCase();
     const dob = input.dob.trim() || null;
     const district = input.district.trim();
-    const assembly_constituency = input.assembly_constituency.trim();
+    const taluk = (input.taluk || input.assembly_constituency || "").trim();
+    const assembly_constituency = (input.assembly_constituency || taluk).trim();
     const panchayat_area = input.panchayat_area.trim();
     const pincode = input.pincode.trim() || null;
     const ngo = input.ngo.trim() || null;
@@ -50,7 +52,7 @@ export async function submitInterviewerApplication(input: InterviewerApplication
     if (!/^[6-9]\d{9}$/.test(mobile)) return { error: "Enter a valid 10-digit mobile number." };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
     if (!district) return { error: "District is required." };
-    if (!assembly_constituency) return { error: "Assembly constituency is required." };
+    if (!taluk && !assembly_constituency) return { error: "Taluk is required." };
     if (!panchayat_area) return { error: "Panchayat / area is required." };
     if (input.password.length < 8) return { error: "Password must be at least 8 characters." };
     if (input.password !== input.confirm_password) return { error: "Passwords do not match." };

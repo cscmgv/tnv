@@ -399,6 +399,7 @@ export type ImportRow = {
   candidate_email?: string;
   interview_date?: string;
   district?: string;
+  taluk?: string;
   assembly_constituency?: string;
   panchayat_area?: string;
   pincode?: string;
@@ -413,6 +414,7 @@ type CleanedImportRow = {
   candidate_email: string | null;
   interview_date: string;
   district: string;
+  taluk: string;
   assembly_constituency: string;
   panchayat_area: string;
   pincode: string | null;
@@ -425,6 +427,7 @@ const IMPORT_FIELD_LABELS: Record<keyof Omit<CleanedImportRow, "candidate_mobile
   candidate_name: "Name",
   candidate_email: "Email",
   district: "District",
+  taluk: "Taluk",
   assembly_constituency: "Constituency",
   panchayat_area: "Panchayat / Area",
   pincode: "Pincode",
@@ -442,13 +445,15 @@ export type ImportPreviewRow = {
 };
 
 function cleanImportRow(r: ImportRow, today: string): CleanedImportRow {
+  const taluk = r.taluk?.trim() || r.assembly_constituency?.trim() || "";
   return {
     candidate_name: r.candidate_name.trim(),
     candidate_mobile: r.candidate_mobile.trim(),
     candidate_email: r.candidate_email?.trim() || null,
     interview_date: r.interview_date?.trim() || today,
     district: r.district?.trim() || "",
-    assembly_constituency: r.assembly_constituency?.trim() || "",
+    taluk: taluk,
+    assembly_constituency: r.assembly_constituency?.trim() || taluk,
     panchayat_area: r.panchayat_area?.trim() || "",
     pincode: r.pincode?.trim() || null,
     ngo: r.ngo?.trim() || null,
@@ -503,7 +508,7 @@ export async function previewCandidateImport(rows: ImportRow[], categoryId: numb
       const chunk = mobiles.slice(i, i + LOOKUP_CHUNK_SIZE);
       const { data, error } = await supabase
         .from("candidates")
-        .select("id, candidate_name, candidate_mobile, candidate_email, district, assembly_constituency, panchayat_area, pincode, ngo, dob, current_tnv_role")
+        .select("id, candidate_name, candidate_mobile, candidate_email, district, taluk, assembly_constituency, panchayat_area, pincode, ngo, dob, current_tnv_role")
         .in("candidate_mobile", chunk);
       if (error) return { error: "Could not check existing candidates: " + error.message };
       existingData.push(...(data || []));
@@ -755,7 +760,8 @@ export async function createCandidate(formData: FormData) {
     candidate_email: String(formData.get("candidate_email") || "").trim() || null,
     interview_date: String(formData.get("interview_date") || "") || new Date().toISOString().slice(0, 10),
     district: String(formData.get("district") || ""),
-    assembly_constituency: String(formData.get("assembly_constituency") || "").trim(),
+    taluk: String(formData.get("taluk") || formData.get("assembly_constituency") || "").trim(),
+    assembly_constituency: String(formData.get("taluk") || formData.get("assembly_constituency") || "").trim(),
     panchayat_area: String(formData.get("panchayat_area") || "").trim(),
     pincode: String(formData.get("pincode") || "").trim() || null,
     ngo: String(formData.get("ngo") || "").trim() || null,
@@ -770,7 +776,7 @@ export async function createCandidate(formData: FormData) {
   if (!candidatePatch.candidate_mobile) return { error: "Mobile is required." };
   if (interviewCompleted && !candidatePatch.interview_date) return { error: "Interview date is required." };
   if (!candidatePatch.district) return { error: "District is required." };
-  if (!candidatePatch.assembly_constituency) return { error: "Assembly constituency is required." };
+  if (!candidatePatch.taluk && !candidatePatch.assembly_constituency) return { error: "Taluk is required." };
   if (!candidatePatch.panchayat_area) return { error: "Panchayat / area is required." };
 
   const { data: candData, error: candErr } = await supabase
@@ -833,7 +839,8 @@ export async function updateAssessment(assessmentId: number, candidateId: number
     candidate_email: String(formData.get("candidate_email") || "").trim() || null,
     interview_date: String(formData.get("interview_date") || ""),
     district: String(formData.get("district") || ""),
-    assembly_constituency: String(formData.get("assembly_constituency") || "").trim(),
+    taluk: String(formData.get("taluk") || formData.get("assembly_constituency") || "").trim(),
+    assembly_constituency: String(formData.get("taluk") || formData.get("assembly_constituency") || "").trim(),
     panchayat_area: String(formData.get("panchayat_area") || "").trim(),
     pincode: String(formData.get("pincode") || "").trim() || null,
     ngo: String(formData.get("ngo") || "").trim() || null,

@@ -14,6 +14,7 @@ export default function AssessmentReport({
   candidateMobile,
   candidateEmail,
   district,
+  taluk,
   constituency,
   panchayat,
   pincode,
@@ -35,7 +36,8 @@ export default function AssessmentReport({
   candidateMobile: string;
   candidateEmail?: string | null;
   district: string;
-  constituency: string;
+  taluk?: string | null;
+  constituency?: string | null;
   panchayat?: string | null;
   pincode?: string | null;
   ngo?: string | null;
@@ -70,7 +72,7 @@ export default function AssessmentReport({
         {candidateEmail && <Field label="Email" value={candidateEmail} />}
         <Field label="Date of Birth" value={dob ? `${dob}${age !== null ? ` (Age ${age})` : ""}` : "—"} />
         <Field label="District" value={district} />
-        <Field label="Assembly Constituency" value={constituency} />
+        <Field label={taluk ? "Taluk" : "Assembly Constituency"} value={taluk || constituency || "—"} />
         <Field label="Panchayat / Area" value={panchayat || "—"} />
         <Field label="Pincode" value={pincode || "—"} />
         <Field label="NGO" value={ngo || "—"} />

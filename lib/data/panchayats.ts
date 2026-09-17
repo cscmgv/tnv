@@ -1531,27 +1531,59 @@ export const PANCHAYATS_BY_CONSTITUENCY: Record<string, AreaInfo[]> = {
   ],
 };
 
+import {
+  TAMIL_NADU_GEO,
+  getTaluksForDistrict,
+  getPanchayatsForTaluk,
+  getDefaultPincodeForTaluk,
+} from "./taluks";
+
+export {
+  TAMIL_NADU_GEO,
+  getTaluksForDistrict,
+  getPanchayatsForTaluk,
+  getDefaultPincodeForTaluk,
+};
+
 /**
- * Returns available Panchayats / Areas for an Assembly Constituency.
+ * Returns available Panchayats / Areas for a Taluk or Assembly Constituency.
  */
-export function getPanchayatsForConstituency(constituency: string): AreaInfo[] {
-  if (!constituency) return [];
-  return PANCHAYATS_BY_CONSTITUENCY[constituency] || [];
+export function getPanchayatsForConstituency(constituencyOrTaluk: string, district?: string): AreaInfo[] {
+  if (!constituencyOrTaluk) return [];
+  if (district) {
+    const talukPanchayats = getPanchayatsForTaluk(district, constituencyOrTaluk);
+    if (talukPanchayats && talukPanchayats.length > 0) return talukPanchayats;
+  }
+  // Check direct constituency mapping
+  if (PANCHAYATS_BY_CONSTITUENCY[constituencyOrTaluk]) {
+    return PANCHAYATS_BY_CONSTITUENCY[constituencyOrTaluk];
+  }
+  // Search across all districts for this taluk name
+  for (const dist of Object.keys(TAMIL_NADU_GEO)) {
+    if (TAMIL_NADU_GEO[dist][constituencyOrTaluk]) {
+      return TAMIL_NADU_GEO[dist][constituencyOrTaluk].panchayats;
+    }
+  }
+  return [];
 }
 
 /**
- * Gets the postal pincode for a given constituency and panchayat name.
+ * Gets the postal pincode for a given taluk/constituency and panchayat name.
  */
-export function getPincodeForPanchayat(constituency: string, panchayatName: string): string | undefined {
-  const list = getPanchayatsForConstituency(constituency);
+export function getPincodeForPanchayat(constituencyOrTaluk: string, panchayatName: string, district?: string): string | undefined {
+  const list = getPanchayatsForConstituency(constituencyOrTaluk, district);
   const found = list.find((item) => item.name.toLowerCase() === panchayatName.toLowerCase().trim());
   return found?.pincode;
 }
 
 /**
- * Fallback / default pincode for a constituency (if only constituency is known).
+ * Fallback / default pincode for a taluk or constituency.
  */
-export function getDefaultPincodeForConstituency(constituency: string): string | undefined {
-  const list = getPanchayatsForConstituency(constituency);
+export function getDefaultPincodeForConstituency(constituencyOrTaluk: string, district?: string): string | undefined {
+  if (district) {
+    const pin = getDefaultPincodeForTaluk(district, constituencyOrTaluk);
+    if (pin) return pin;
+  }
+  const list = getPanchayatsForConstituency(constituencyOrTaluk, district);
   return list[0]?.pincode;
 }
