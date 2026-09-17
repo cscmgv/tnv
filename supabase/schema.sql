@@ -71,7 +71,8 @@ create index if not exists idx_assessments_candidate on assessments(candidate_id
 create index if not exists idx_assessments_interviewer on assessments(interviewer_id);
 
 -- ─── VIEWS ────────────────────────────────────────────────────
-create or replace view v_full_report as
+drop view if exists v_full_report cascade;
+create view v_full_report as
 select
   a.id as assessment_id,
   a.candidate_id,
@@ -264,7 +265,8 @@ create policy "candidates_update_category_scope" on candidates
 
 -- v_full_report needs to be recreated (not just altered) to expose the new
 -- pincode column — CREATE OR REPLACE is safe to re-run.
-create or replace view v_full_report as
+drop view if exists v_full_report cascade;
+create view v_full_report as
 select
   a.id as assessment_id,
   a.candidate_id,
@@ -289,7 +291,8 @@ alter view v_full_report set (security_invoker = true);
 alter table candidates add column if not exists ngo text;
 
 -- v_full_report needs to be recreated again to expose ngo.
-create or replace view v_full_report as
+drop view if exists v_full_report cascade;
+create view v_full_report as
 select
   a.id as assessment_id,
   a.candidate_id,
@@ -453,7 +456,7 @@ create unique index if not exists idx_candidates_serial_unique on candidates(ser
 -- v_full_report needs to be recreated (DROP + CREATE, not CREATE OR
 -- REPLACE — see the pincode/ngo migration above for why) to expose
 -- serial_number.
-drop view if exists v_full_report;
+drop view if exists v_full_report cascade;
 create view v_full_report as
 select
   a.id as assessment_id,
@@ -480,7 +483,7 @@ alter view v_full_report set (security_invoker = true);
 -- (a stored age column would silently go stale).
 alter table candidates add column if not exists dob date;
 
-drop view if exists v_full_report;
+drop view if exists v_full_report cascade;
 create view v_full_report as
 select
   a.id as assessment_id,
