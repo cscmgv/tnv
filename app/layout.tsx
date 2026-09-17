@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   description: "Tamil Nadu Volunteers (TNV) Leadership Selection Assessment Portal.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html
       lang="en"
