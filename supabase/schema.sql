@@ -448,7 +448,11 @@ from (
 ) sub
 where candidates.id = sub.id;
 
-select setval('candidates_serial_seq', coalesce((select max(serial_number) from candidates), 0));
+select setval(
+  'candidates_serial_seq',
+  coalesce((select max(serial_number) from candidates), 1),
+  (select exists (select 1 from candidates where serial_number is not null))
+);
 alter table candidates alter column serial_number set default nextval('candidates_serial_seq');
 alter table candidates alter column serial_number set not null;
 create unique index if not exists idx_candidates_serial_unique on candidates(serial_number);
