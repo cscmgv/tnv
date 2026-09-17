@@ -109,7 +109,7 @@ select
   a.verification_status,
   a.assessor_signature,
   a.additional_notes,
-  a.created_at as assessed_at
+  a.assessed_at
 from assessments a
 join candidates c on a.candidate_id = c.id
 join profiles p on a.interviewer_id = p.id;
