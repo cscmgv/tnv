@@ -7,18 +7,51 @@ export const dynamic = "force-dynamic";
 export default async function HistoryPage() {
   const { supabase } = await requireProfile("admin");
 
-  // Fetch upload batches
-  const { data: batches, error: batchError } = await supabase
-    .from("upload_batches")
-    .select("*")
-    .order("uploaded_at", { ascending: false });
+  // Fetch upload batches safely
+  let batches: UploadBatch[] = [];
+  let isBatchesMissing = false;
+  let customError = "";
 
-  // Fetch activity logs
-  const { data: activities, error: activityError } = await supabase
-    .from("activity_history")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  try {
+    const { data, error } = await supabase
+      .from("upload_batches")
+      .select("*")
+      .order("uploaded_at", { ascending: false });
+
+    if (error) {
+      if (error.code === "PGRST205" || error.message?.includes("upload_batches") || error.message?.includes("schema cache")) {
+        isBatchesMissing = true;
+      } else {
+        customError = error.message;
+      }
+    } else if (data) {
+      batches = data as UploadBatch[];
+    }
+  } catch {
+    isBatchesMissing = true;
+  }
+
+  // Fetch activity logs safely
+  let activities: ActivityLog[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("activity_history")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      if (error.code === "PGRST205" || error.message?.includes("activity_history") || error.message?.includes("schema cache")) {
+        // Table not created yet
+      } else if (!customError) {
+        customError = error.message;
+      }
+    } else if (data) {
+      activities = data as ActivityLog[];
+    }
+  } catch {
+    // Ignore
+  }
 
   // Fetch user profiles for displaying performer names
   const { data: profiles } = await supabase
@@ -33,10 +66,11 @@ export default async function HistoryPage() {
   return (
     <div className="space-y-6">
       <HistoryPanel
-        batches={(batches as UploadBatch[]) || []}
-        activities={(activities as ActivityLog[]) || []}
+        batches={batches}
+        activities={activities}
         profilesById={profilesById}
-        error={batchError?.message || activityError?.message}
+        isTableMissing={isBatchesMissing}
+        error={customError || undefined}
       />
     </div>
   );

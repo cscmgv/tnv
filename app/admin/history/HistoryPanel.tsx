@@ -10,11 +10,13 @@ export default function HistoryPanel({
   batches,
   activities,
   profilesById,
+  isTableMissing,
   error,
 }: {
   batches: UploadBatch[];
   activities: ActivityLog[];
   profilesById: Record<string, string>;
+  isTableMissing?: boolean;
   error?: string;
 }) {
   const router = useRouter();
@@ -107,7 +109,22 @@ export default function HistoryPanel({
         </div>
       )}
 
-      {error && (
+      {isTableMissing && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm">
+          <div className="font-bold flex items-center gap-2 mb-1">
+            <span>⚙️ Uploads & History Setup Required</span>
+          </div>
+          <p className="text-xs text-amber-800 mb-2">
+            The <code>upload_batches</code> and <code>activity_history</code> tables have not been created in Supabase yet.
+            Once you execute the SQL script in your Supabase SQL Editor, upload batches and audit logs will automatically start appearing here.
+          </p>
+          <div className="text-xs text-amber-700 font-mono bg-white p-2.5 rounded-lg border border-amber-200">
+            Open Supabase Dashboard → SQL Editor → Run the script from <code>supabase/run_this_in_supabase_sql_editor.sql</code>
+          </div>
+        </div>
+      )}
+
+      {error && !isTableMissing && (
         <div className="p-3.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
           Failed to load history data: {error}
         </div>

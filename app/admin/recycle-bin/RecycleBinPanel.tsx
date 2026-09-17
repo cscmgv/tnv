@@ -34,9 +34,11 @@ function getDaysRemaining(deletedAt: string | null): number {
 
 export default function RecycleBinPanel({
   candidates,
+  isMigrationMissing,
   loadError,
 }: {
   candidates: TrashedCandidate[];
+  isMigrationMissing?: boolean;
   loadError?: string;
 }) {
   const router = useRouter();
@@ -231,7 +233,22 @@ export default function RecycleBinPanel({
         </div>
       )}
 
-      {loadError && (
+      {isMigrationMissing && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm">
+          <div className="font-bold flex items-center gap-2 mb-1">
+            <span>⚙️ Recycle Bin Setup Required</span>
+          </div>
+          <p className="text-xs text-amber-800 mb-2">
+            The <code>deleted_at</code> column has not been added to the <code>candidates</code> table in Supabase yet.
+            Once you execute the SQL script in your Supabase SQL Editor, soft-deleted candidates will safely appear here for 7 days before auto-purge.
+          </p>
+          <div className="text-xs text-amber-700 font-mono bg-white p-2.5 rounded-lg border border-amber-200">
+            Open Supabase Dashboard → SQL Editor → Run the script from <code>supabase/run_this_in_supabase_sql_editor.sql</code>
+          </div>
+        </div>
+      )}
+
+      {loadError && !isMigrationMissing && (
         <div className="p-3.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
           Failed to load recycle bin: {loadError}
         </div>

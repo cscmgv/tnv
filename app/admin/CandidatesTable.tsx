@@ -12,7 +12,6 @@ import {
   previewCandidateImport,
   commitCandidateImport,
   revokeUploadBatch,
-  fixSerialNumbersSequentially,
   type ImportRow,
   type ImportPreviewRow,
 } from "./actions";
@@ -519,19 +518,6 @@ export default function CandidatesTable({
     });
   }
 
-  function handleFixSerialNumbers() {
-    if (!confirm("Re-sequence all candidate serial numbers from 1, 2, 3... sequentially?")) return;
-    startTransition(async () => {
-      const res = await fixSerialNumbersSequentially();
-      if (res && "error" in res && res.error) {
-        setActionMessage({ type: "error", text: res.error });
-      } else if (res && "success" in res) {
-        setActionMessage({ type: "success", text: `Updated ${res.updated ?? 0} candidate serial numbers sequentially.` });
-        router.refresh();
-      }
-    });
-  }
-
   function cancelImport() {
     setImportPreview(null);
     setImportError("");
@@ -635,16 +621,6 @@ export default function CandidatesTable({
             >
               + Add Candidate
             </Link>
-          )}
-          {isAdmin && (
-            <button
-              onClick={handleFixSerialNumbers}
-              disabled={isPending}
-              title="Re-order all serial numbers sequentially from 1, 2, 3... in database"
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg px-3 py-2 whitespace-nowrap"
-            >
-              🔢 Fix S.No Order
-            </button>
           )}
           {isAdmin && (
             <button
