@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* This app's UI is a light-only design (white cards on a light-gray page,
+   throughout admin/interview/login) — it never adapts its own components
+   for a dark palette. Letting --foreground flip to near-white under OS
+   dark mode left plain text (candidate names, table cells, etc.) nearly
+   invisible on those white cards, since only a few elements set an
+   explicit text color. So force the light palette regardless of OS/browser
+   theme instead of patching every element individually. */
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Form fields always render on a light (white/gray) box in this app's UI,
+   regardless of OS dark-mode — so pin their colors instead of inheriting
+   var(--foreground), which goes near-white in dark mode and becomes
+   invisible on those light boxes. */
+input,
+select,
+textarea {
+  color: #111827;
+  background-color: #fff;
+  color-scheme: light;
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+  background-color: transparent;
+  accent-color: #1a6b1a;
+  width: 15px;
+  height: 15px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  color: #6b7280;
+  background-color: #f3f4f6;
+}
