@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 -- TNV Leadership Selection Portal â€” Schema (Supabase Auth based)
 -- Run this once in the Supabase SQL Editor on a fresh project.
 -- ============================================================
@@ -794,5 +794,14 @@ create index if not exists idx_candidates_completed_created on candidates(interv
 create index if not exists idx_profiles_role_active on profiles(role, is_active);
 create index if not exists idx_candidates_district on candidates(district);
 create index if not exists idx_candidates_constituency on candidates(assembly_constituency);
+
+notify pgrst, 'reload schema';
+
+-- ============================================================
+-- 4. INITIAL ADMIN PROFILE (Automatically configured for your user)
+-- ============================================================
+insert into profiles (id, role, full_name, email, is_active, profile_completed)
+values ('40fd497b-fe5a-42e2-be5c-4e30adea9ef3', 'admin', 'Core TNV Admin', '123@tnv.com', true, true)
+on conflict (id) do update set role = 'admin', is_active = true, profile_completed = true;
 
 notify pgrst, 'reload schema';
