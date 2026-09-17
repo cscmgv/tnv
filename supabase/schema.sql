@@ -114,37 +114,49 @@ alter table candidates   enable row level security;
 alter table assessments  enable row level security;
 
 -- profiles
+drop policy if exists "profiles_select_own_or_admin" on profiles;
 create policy "profiles_select_own_or_admin" on profiles
   for select using (id = auth.uid() or is_admin());
+drop policy if exists "profiles_admin_insert" on profiles;
 create policy "profiles_admin_insert" on profiles
   for insert with check (is_admin());
+drop policy if exists "profiles_admin_update" on profiles;
 create policy "profiles_admin_update" on profiles
   for update using (is_admin());
+drop policy if exists "profiles_admin_delete" on profiles;
 create policy "profiles_admin_delete" on profiles
   for delete using (is_admin());
 
 -- candidates: any active interviewer can insert; owner (created_by) or admin can select/update/delete
+drop policy if exists "candidates_insert_active_user" on candidates;
 create policy "candidates_insert_active_user" on candidates
   for insert with check (
     auth.uid() is not null and
     exists (select 1 from profiles where id = auth.uid() and is_active)
   );
+drop policy if exists "candidates_select_own_or_admin" on candidates;
 create policy "candidates_select_own_or_admin" on candidates
   for select using (created_by = auth.uid() or is_admin());
+drop policy if exists "candidates_update_own_or_admin" on candidates;
 create policy "candidates_update_own_or_admin" on candidates
   for update using (created_by = auth.uid() or is_admin());
+drop policy if exists "candidates_delete_admin_only" on candidates;
 create policy "candidates_delete_admin_only" on candidates
   for delete using (is_admin());
 
 -- assessments: interviewer can insert/select/update own; admin full access.
 -- (The insert policy is tightened further down, once candidate scoping
 -- columns exist, to also require the candidate be in the interviewer's scope.)
+drop policy if exists "assessments_insert_own" on assessments;
 create policy "assessments_insert_own" on assessments
   for insert with check (interviewer_id = auth.uid());
+drop policy if exists "assessments_select_own_or_admin" on assessments;
 create policy "assessments_select_own_or_admin" on assessments
   for select using (interviewer_id = auth.uid() or is_admin());
+drop policy if exists "assessments_update_own_or_admin" on assessments;
 create policy "assessments_update_own_or_admin" on assessments
   for update using (interviewer_id = auth.uid() or is_admin());
+drop policy if exists "assessments_delete_admin_only" on assessments;
 create policy "assessments_delete_admin_only" on assessments
   for delete using (is_admin());
 
@@ -178,8 +190,10 @@ alter table profiles add column if not exists profile_completed boolean not null
 alter table candidates add column if not exists assigned_to uuid references profiles(id) on delete set null;
 create index if not exists idx_candidates_assigned_to on candidates(assigned_to);
 
+drop policy if exists "candidates_select_assigned" on candidates;
 create policy "candidates_select_assigned" on candidates
   for select using (assigned_to = auth.uid());
+drop policy if exists "candidates_update_assigned" on candidates;
 create policy "candidates_update_assigned" on candidates
   for update using (assigned_to = auth.uid());
 
@@ -188,6 +202,7 @@ create policy "candidates_update_assigned" on candidates
 -- them, on top of (not instead of) any one-off assignment above.
 alter table profiles add column if not exists allowed_districts text[] not null default '{}';
 
+drop policy if exists "candidates_select_district_scope" on candidates;
 create policy "candidates_select_district_scope" on candidates
   for select using (
     exists (
@@ -195,6 +210,7 @@ create policy "candidates_select_district_scope" on candidates
       where p.id = auth.uid() and candidates.district = any (p.allowed_districts)
     )
   );
+drop policy if exists "candidates_update_district_scope" on candidates;
 create policy "candidates_update_district_scope" on candidates
   for update using (
     exists (
@@ -207,6 +223,7 @@ create policy "candidates_update_district_scope" on candidates
 -- to individual assembly constituencies for finer-grained coverage.
 alter table profiles add column if not exists allowed_constituencies text[] not null default '{}';
 
+drop policy if exists "candidates_select_constituency_scope" on candidates;
 create policy "candidates_select_constituency_scope" on candidates
   for select using (
     exists (
@@ -214,6 +231,7 @@ create policy "candidates_select_constituency_scope" on candidates
       where p.id = auth.uid() and candidates.assembly_constituency = any (p.allowed_constituencies)
     )
   );
+drop policy if exists "candidates_update_constituency_scope" on candidates;
 create policy "candidates_update_constituency_scope" on candidates
   for update using (
     exists (
@@ -227,6 +245,7 @@ create policy "candidates_update_constituency_scope" on candidates
 alter table candidates add column if not exists pincode text;
 alter table profiles add column if not exists allowed_pincodes text[] not null default '{}';
 
+drop policy if exists "candidates_select_pincode_scope" on candidates;
 create policy "candidates_select_pincode_scope" on candidates
   for select using (
     exists (
@@ -234,6 +253,7 @@ create policy "candidates_select_pincode_scope" on candidates
       where p.id = auth.uid() and candidates.pincode = any (p.allowed_pincodes)
     )
   );
+drop policy if exists "candidates_update_pincode_scope" on candidates;
 create policy "candidates_update_pincode_scope" on candidates
   for update using (
     exists (
@@ -248,6 +268,7 @@ create policy "candidates_update_pincode_scope" on candidates
 -- candidates by this point (added above, in the CATEGORIES section).
 alter table profiles add column if not exists allowed_categories bigint[] not null default '{}';
 
+drop policy if exists "candidates_select_category_scope" on candidates;
 create policy "candidates_select_category_scope" on candidates
   for select using (
     exists (
@@ -255,6 +276,7 @@ create policy "candidates_select_category_scope" on candidates
       where p.id = auth.uid() and candidates.category_id = any (p.allowed_categories)
     )
   );
+drop policy if exists "candidates_update_category_scope" on candidates;
 create policy "candidates_update_category_scope" on candidates
   for update using (
     exists (
@@ -318,6 +340,7 @@ alter view v_full_report set (security_invoker = true);
 -- actually in that interviewer's scope, letting any interviewer write an
 -- assessment for any candidate. Tighten it now that scoping columns exist.
 drop policy if exists "assessments_insert_own" on assessments;
+
 create policy "assessments_insert_own" on assessments
   for insert with check (
     interviewer_id = auth.uid()
@@ -357,9 +380,11 @@ alter table call_logs enable row level security;
 
 -- (call_logs_insert_own is tightened further down, alongside the
 -- assessments_insert_own fix, to also require the candidate be in scope.)
+drop policy if exists "call_logs_insert_own" on call_logs;
 create policy "call_logs_insert_own" on call_logs
   for insert with check (interviewer_id = auth.uid());
 
+drop policy if exists "call_logs_select_scope" on call_logs;
 create policy "call_logs_select_scope" on call_logs
   for select using (
     interviewer_id = auth.uid()
@@ -384,6 +409,7 @@ create policy "call_logs_select_scope" on call_logs
     )
   );
 
+drop policy if exists "call_logs_delete_admin_only" on call_logs;
 create policy "call_logs_delete_admin_only" on call_logs
   for delete using (is_admin());
 
@@ -392,6 +418,7 @@ create policy "call_logs_delete_admin_only" on call_logs
 -- that interviewer's scope, letting any interviewer log a call against any
 -- candidate. Tighten it to match call_logs_select_scope above.
 drop policy if exists "call_logs_insert_own" on call_logs;
+
 create policy "call_logs_insert_own" on call_logs
   for insert with check (
     interviewer_id = auth.uid()
@@ -416,12 +443,16 @@ create policy "call_logs_insert_own" on call_logs
   );
 
 alter table categories enable row level security;
+drop policy if exists "categories_select_authenticated" on categories;
 create policy "categories_select_authenticated" on categories
   for select using (auth.uid() is not null);
+drop policy if exists "categories_admin_insert" on categories;
 create policy "categories_admin_insert" on categories
   for insert with check (is_admin());
+drop policy if exists "categories_admin_update" on categories;
 create policy "categories_admin_update" on categories
   for update using (is_admin());
+drop policy if exists "categories_admin_delete" on categories;
 create policy "categories_admin_delete" on categories
   for delete using (is_admin());
 
@@ -518,6 +549,7 @@ alter view v_full_report set (security_invoker = true);
 -- scope, so an interviewer still can't take/edit an interview or log a
 -- call for a candidate outside their assignment/district/constituency/
 -- pincode — they can only look.
+drop policy if exists "candidates_select_all_active_interviewers" on candidates;
 create policy "candidates_select_all_active_interviewers" on candidates
   for select using (
     exists (
@@ -533,6 +565,7 @@ create policy "candidates_select_all_active_interviewers" on candidates
 -- WITH CHECK forces the only allowed change to be assigning it to *this*
 -- interviewer (they can't reassign it to someone else, and they can't touch
 -- a candidate someone else already claimed).
+drop policy if exists "candidates_claim_unassigned" on candidates;
 create policy "candidates_claim_unassigned" on candidates
   for update using (
     assigned_to is null
@@ -560,8 +593,10 @@ create index if not exists idx_candidate_categories_candidate on candidate_categ
 create index if not exists idx_candidate_categories_category on candidate_categories(category_id);
 
 alter table candidate_categories enable row level security;
+drop policy if exists "candidate_categories_select_authenticated" on candidate_categories;
 create policy "candidate_categories_select_authenticated" on candidate_categories
   for select using (auth.uid() is not null);
+drop policy if exists "candidate_categories_admin_write" on candidate_categories;
 create policy "candidate_categories_admin_write" on candidate_categories
   for all using (is_admin()) with check (is_admin());
 
@@ -573,6 +608,7 @@ on conflict do nothing;
 -- category-scope RLS now also matches via the multi-category junction table,
 -- not just the legacy single category_id column.
 drop policy if exists "candidates_select_category_scope" on candidates;
+
 create policy "candidates_select_category_scope" on candidates
   for select using (
     exists (
@@ -587,6 +623,7 @@ create policy "candidates_select_category_scope" on candidates
     )
   );
 drop policy if exists "candidates_update_category_scope" on candidates;
+
 create policy "candidates_update_category_scope" on candidates
   for update using (
     exists (
@@ -602,6 +639,7 @@ create policy "candidates_update_category_scope" on candidates
   );
 
 drop policy if exists "assessments_insert_own" on assessments;
+
 create policy "assessments_insert_own" on assessments
   for insert with check (
     interviewer_id = auth.uid()
@@ -630,6 +668,7 @@ create policy "assessments_insert_own" on assessments
   );
 
 drop policy if exists "call_logs_insert_own" on call_logs;
+
 create policy "call_logs_insert_own" on call_logs
   for insert with check (
     interviewer_id = auth.uid()
@@ -679,9 +718,11 @@ create index if not exists idx_interviewer_coverage_category on interviewer_cove
 
 alter table interviewer_coverage enable row level security;
 drop policy if exists "interviewer_coverage_select_own_or_admin" on interviewer_coverage;
+
 create policy "interviewer_coverage_select_own_or_admin" on interviewer_coverage
   for select using (interviewer_id = auth.uid() or is_admin());
 drop policy if exists "interviewer_coverage_admin_write" on interviewer_coverage;
+
 create policy "interviewer_coverage_admin_write" on interviewer_coverage
   for all using (is_admin()) with check (is_admin());
 
@@ -717,12 +758,15 @@ drop policy if exists "candidates_update_category_scope" on candidates;
 drop policy if exists "candidates_select_all_active_interviewers" on candidates;
 drop policy if exists "candidates_claim_unassigned" on candidates;
 
+drop policy if exists "candidates_select_coverage_scope" on candidates;
 create policy "candidates_select_coverage_scope" on candidates
   for select using (candidate_in_interviewer_coverage(candidates.id, auth.uid()));
+drop policy if exists "candidates_update_coverage_scope" on candidates;
 create policy "candidates_update_coverage_scope" on candidates
   for update using (candidate_in_interviewer_coverage(candidates.id, auth.uid()));
 
 drop policy if exists "assessments_insert_own" on assessments;
+
 create policy "assessments_insert_own" on assessments
   for insert with check (
     interviewer_id = auth.uid()
@@ -739,6 +783,7 @@ create policy "assessments_insert_own" on assessments
   );
 
 drop policy if exists "call_logs_insert_own" on call_logs;
+
 create policy "call_logs_insert_own" on call_logs
   for insert with check (
     interviewer_id = auth.uid()
@@ -755,6 +800,7 @@ create policy "call_logs_insert_own" on call_logs
   );
 
 drop policy if exists "call_logs_select_scope" on call_logs;
+
 create policy "call_logs_select_scope" on call_logs
   for select using (
     interviewer_id = auth.uid()
