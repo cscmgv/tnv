@@ -459,11 +459,11 @@ create policy "categories_admin_delete" on categories
 insert into categories (name) values ('Panai'), ('DrugFreeTN')
 on conflict (name) do nothing;
 
--- candidate mobile number is the unique identifier for a candidate — no two
--- candidate rows may share the same mobile number. If this fails with a
--- duplicate-key error, find and merge/delete the existing duplicates first:
---   select candidate_mobile, count(*) from candidates group by candidate_mobile having count(*) > 1;
-create unique index if not exists idx_candidates_mobile_unique on candidates(candidate_mobile);
+-- mobile number does not have to be unique (supports multiple candidates sharing the same mobile)
+drop index if exists idx_candidates_mobile_unique cascade;
+alter table candidates drop constraint if exists candidates_candidate_mobile_key cascade;
+alter table candidates drop constraint if exists candidates_mobile_unique cascade;
+create index if not exists idx_candidates_mobile on candidates(candidate_mobile);
 
 -- stable, persistent serial number — assigned once at creation (in creation
 -- order), shown everywhere (table, forms, Excel export) instead of a row

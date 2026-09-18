@@ -462,34 +462,25 @@ function cleanImportRow(r: ImportRow, today: string): CleanedImportRow {
   };
 }
 
-// Mobile number is the candidate's unique identifier. Previewing an upload
-// matches each row to any existing candidate by mobile (regardless of which
-// category, if any, that candidate is currently in) so an upload can update
-// an existing record in place instead of creating a duplicate.
+// Multiple candidates can share the same mobile number. Previewing an upload
+// matches each row by both candidate name and mobile so an upload can update
+// an existing record if both match, while allowing multiple candidates with
+// the same mobile number.
 export async function previewCandidateImport(rows: ImportRow[], categoryId: number | null) {
   return safeAction(async () => {
     const { supabase } = await requireProfile("admin");
     if (!rows.length) return { error: "No rows to import." };
 
     const today = new Date().toISOString().slice(0, 10);
-    const seen = new Set<string>();
     const cleaned = rows
       .filter((r) => r.candidate_name?.trim() && r.candidate_mobile?.trim())
-      .map((r) => cleanImportRow(r, today))
-      .filter((c) => {
-        if (seen.has(c.candidate_mobile)) return false;
-        seen.add(c.candidate_mobile);
-        return true;
-      });
+      .map((r) => cleanImportRow(r, today));
 
     if (!cleaned.length) return { error: "No valid rows (need at least Name and Mobile)." };
 
     // A `.in(...)` filter with thousands of values produces a URL too long
     // for the request to succeed — chunk it, and actually check for errors
-    // (an unchecked failure here previously fell back to an empty result,
-    // which silently marked every row "new" even when it already existed,
-    // causing a duplicate-mobile error on import instead of an update).
-    const mobiles = cleaned.map((c) => c.candidate_mobile);
+    const mobiles = Array.from(new Set(cleaned.map((c) => c.candidate_mobile)));
     const existingData: {
       id: number;
       candidate_name: string;
@@ -513,7 +504,10 @@ export async function previewCandidateImport(rows: ImportRow[], categoryId: numb
       if (error) return { error: "Could not check existing candidates: " + error.message };
       existingData.push(...(data || []));
     }
-    const existingByMobile = new Map(existingData.map((e) => [e.candidate_mobile, e]));
+    // Match by both name and mobile so multiple candidates can share the same mobile number
+    const existingByKey = new Map(
+      existingData.map((e) => [`${e.candidate_name.trim().toLowerCase()}_${e.candidate_mobile.trim()}`, e])
+    );
 
     // A candidate can belong to more than one category — check the junction
     // table for whether this candidate is already a member of the target
@@ -534,7 +528,8 @@ export async function previewCandidateImport(rows: ImportRow[], categoryId: numb
     }
 
     const preview: ImportPreviewRow[] = cleaned.map((row) => {
-      const existing = existingByMobile.get(row.candidate_mobile);
+      const matchKey = `${row.candidate_name.trim().toLowerCase()}_${row.candidate_mobile.trim()}`;
+      const existing = existingByKey.get(matchKey);
       if (!existing) return { row, existingId: null, status: "new", changes: [] };
 
       const changes: ImportFieldChange[] = [];

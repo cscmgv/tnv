@@ -240,7 +240,7 @@ export default function CandidatesTable({
     const q = query.toLowerCase();
     return records.filter((r) => {
       if (q) {
-        const hay = `${r.candidate_name} ${r.district} ${r.assembly_constituency} ${r.pincode ?? ""} ${r.ngo ?? ""} ${(r.categories || []).map((c) => c.name).join(" ")} ${r.auto_suggested_role} ${r.interviewer_name}`.toLowerCase();
+        const hay = `${r.candidate_name} ${r.candidate_mobile} ${r.district} ${r.assembly_constituency} ${r.pincode ?? ""} ${r.ngo ?? ""} ${(r.categories || []).map((c) => c.name).join(" ")} ${r.auto_suggested_role} ${r.interviewer_name}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       if (district && r.district !== district) return false;
@@ -446,14 +446,7 @@ export default function CandidatesTable({
     }
     setPreviewing(false);
     setImportProgress(null);
-
-    const seen = new Set<string>();
-    const deduped = mergedPreview.filter((p) => {
-      if (seen.has(p.row.candidate_mobile)) return false;
-      seen.add(p.row.candidate_mobile);
-      return true;
-    });
-    setImportPreview(deduped);
+    setImportPreview(mergedPreview);
   }
 
   const IMPORT_BATCH_SIZE = 10;

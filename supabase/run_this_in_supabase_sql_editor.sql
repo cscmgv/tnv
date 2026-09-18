@@ -15,6 +15,12 @@ create index if not exists idx_candidates_deleted_at on candidates(deleted_at);
 create index if not exists idx_candidates_upload_batch on candidates(upload_batch_id);
 create index if not exists idx_candidates_taluk on candidates(taluk);
 
+-- Allow duplicate/shared mobile numbers (no unique constraint on mobile)
+drop index if exists idx_candidates_mobile_unique cascade;
+alter table candidates drop constraint if exists candidates_candidate_mobile_key cascade;
+alter table candidates drop constraint if exists candidates_mobile_unique cascade;
+create index if not exists idx_candidates_mobile on candidates(candidate_mobile);
+
 -- 2. Create Upload Batches table (to track and revoke mistakenly uploaded spreadsheets)
 create table if not exists upload_batches (
   id text primary key,
